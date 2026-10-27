@@ -25,6 +25,12 @@ GDK_BACKEND=x11 WEBKIT_FORCE_COMPOSITING_MODE=1 ./run.sh
 
 如果仍然空白，尝试关闭其他合成器特效或切换 X11 会话，并提供 `app.log` 与显卡/驱动信息。
 
+## 菜单、按钮和拖动都没反应
+
+先按一次 `F7`。官方“游戏模式”会禁用与桌宠的交互，而且这个开关会持久化；日志中 `[SETTINGS] ... game_mode=true` 表示它正在生效。再按 `F7` 或重新打开设置关闭游戏模式即可恢复。
+
+如果 `F7` 没有反应，再检查 `[INPUT] granted=true running=true` 与 `[HIT]` 日志。
+
 ## 键盘/点击计数不动
 
 桌宠需要读取 `/dev/input/event*`：
