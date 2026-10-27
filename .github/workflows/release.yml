@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag, for example v1.0.1-linux.1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libssl-dev \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf \
+            p7zip-full
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal
+          rustup default 1.97.1
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: linux-release-rust-1.97.1-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - run: npm ci
+
+      - name: Download and verify the official CN client
+        run: node scripts/sync-upstream.mjs
+
+      - name: Prepare official frontend and icons
+        run: |
+          npm run icons
+          npm run prepare:frontend
+
+      - name: Test frontend contracts and native backend
+        run: |
+          npm test
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+
+      - name: Build release binary
+        run: cargo build --manifest-path src-tauri/Cargo.toml --release --locked
+
+      - name: Package tarball
+        run: |
+          mkdir -p bin
+          cp src-tauri/target/release/wuwatappo-linux bin/wuwatappo-linux
+          npm run package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wuwa-tappo-linux-release
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wuwa-tappo-linux-release
+          path: dist
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-linux\.[0-9]+)?$ ]] || { echo "Unexpected tag: $TAG" >&2; exit 1; }
+          cat > /tmp/release-notes.md <<'NOTES'
+          ## Wuwa Tappo 国服 · Linux 社区移植版
+
+          解压后运行 `./install.sh` 注册桌面菜单项，再用 `./run.sh` 启动。`run.sh` 会加入 input 组、建立单实例锁，并以 X11 后端运行 WebKitGTK；直接运行二进制时后端也会补齐透明窗口所需环境变量。
+
+          - 目标平台：x86_64 Linux，需要 WebKitGTK 4.1、GTK 3 和 input 组读取权限。
+          - 界面、角色、美术、字体等资源来自官方国服 1.0.1 客户端；登录与联机仍连接 Kuro 官方服务，请使用自己的国服账号。
+          - 包内不包含任何账号、Cookie、点击记录或日志。
+          - 本项目是社区移植，不是库洛官方 Linux 客户端；官方资源版权归原权利人所有，不适用 MIT 许可。
+          - 当前为 X11 / XWayland 验证版本；纯 Wayland、多显示器混合缩放等环境请先阅读 README 的“已知限制”。
+
+          `tar.gz.sha256` 为对应压缩包的校验和。
+          NOTES
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.tar.gz dist/*.sha256 --clobber
+          else
+            gh release create "$TAG" dist/*.tar.gz dist/*.sha256 \
+              --verify-tag --title "Wuwa Tappo CN Linux $TAG" \
+              --notes-file /tmp/release-notes.md --latest
+          fi
