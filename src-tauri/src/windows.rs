@@ -343,7 +343,19 @@ fn build_window(
                     app.state::<WindowState>()
                         .stop
                         .store(true, Ordering::Release);
-                    app.exit(0);
+                    // Tearing down WebKit synchronously from a GTK window
+                    // event deadlocks or aborts. Hide first, then terminate
+                    // from a separate thread after the event handler returns.
+                    // Tauri's graceful exit still runs GTK teardown in this
+                    // state, so use the process exit path that leaves no
+                    // lingering lock or webview child.
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.hide();
+                    }
+                    std::thread::spawn(|| {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        std::process::exit(0);
+                    });
                     return;
                 }
                 if let Ok(mut windows) = app.state::<WindowState>().auxiliary.write() {
