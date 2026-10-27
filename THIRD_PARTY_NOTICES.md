@@ -13,14 +13,6 @@
 
 源码仓库不存放官方前端资源、Windows 安装包、账号、Cookie 或点击记录。构建与发布流程在本地/CI 中从官方地址下载并校验安装包，再静态提取资源嵌入二进制。使用本项目仍需遵守官方服务条款；本项目与官方发行渠道无关。
 
-## 上游 macOS 移植项目
-
-本项目的移植思路、资源提取脚本和部分 Rust 后端结构基于：
-
-- [Last-emo-boy/wuwa-tappo-mac](https://github.com/Last-emo-boy/wuwa-tappo-mac)，MIT License，Copyright (c) 2026 Last-emo-boy。
-
-Linux 版在此基础上的改动包括：GTK/WebKitGTK 窗口与输入后端、`evdev` 全局键鼠监听、Linux 原生 WebSocket 桥接、桌面安装/打包脚本、Linux CI 与文档。macOS 专用代码（AppKit 菜单、Keychain 会话、DMG 打包等）已从本仓库移除，需要时请参考上游项目。
-
 ## 构建依赖
 
 - **Tauri 2**、Rust crates：各自采用 MIT / Apache-2.0 等许可，版本锁定在 [`src-tauri/Cargo.lock`](src-tauri/Cargo.lock)。

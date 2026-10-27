@@ -1,9 +1,4 @@
 //! Native menu bridge.
-//!
-//! The macOS build exposed an AppKit menu bar and dock menu. The Linux rebuild
-//! keeps the official in-window panel and keyboard shortcuts instead, so these
-//! commands are intentionally no-ops. They stay registered because the official
-//! frontend still invokes them during boot and when opening the dock menu.
 
 use serde_json::Value;
 use tauri::AppHandle;
