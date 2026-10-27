@@ -27,7 +27,9 @@ fi
 cd "$DIR"
 # Reading /dev/input/event* needs the input group. newgrp applies the group to
 # this process without requiring a full logout when the user was just added.
-if ! id -nG "${USER:-$(id -un)}" | tr ' ' '\n' | grep -qx input \
+# Use `id -nG` without a user argument: `id -nG "$USER"` queries /etc/group, so
+# it reports input even when the current session has not inherited it yet.
+if ! id -nG | tr ' ' '\n' | grep -qx input \
   && command -v newgrp >/dev/null 2>&1 \
   && getent group input >/dev/null 2>&1; then
   if newgrp input -c "cd \"$DIR\" && GDK_BACKEND=x11 WEBKIT_FORCE_COMPOSITING_MODE=1 exec \"$BIN\""; then
