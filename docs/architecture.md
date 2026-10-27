@@ -34,7 +34,7 @@ Wuwa Tappo Linux 由两半组成：**官方静态前端**和**重建的 Linux �
 4. 启动输入监听线程；若当前用户不在 `input` 组，`get_input_status` 会返回失败，前端显示提示。
 5. 前端上报命中区域后，后端把它们换算为物理像素并写成主窗口的 **XShape input region**。区域外由 XWayland/KWin 直接穿透，不再轮询光标，避免 Wayland 下 X11 指针坐标冻结的问题。
 
-`main` 之外的所有窗口都是按需创建、关闭时仅 `hide`，再次打开复用实例。登录窗口通过 `login_window_ready` + `login-modal-open` 事件避免首帧竞态。
+`main` 之外的所有窗口都是按需创建、关闭时仅 `hide`，再次打开复用实例。主窗口没有托盘入口，因此用户关闭主窗口时直接退出应用，避免留下无法唤出的后台进程和单实例锁。登录窗口通过 `login_window_ready` + `login-modal-open` 事件避免首帧竞态。
 
 ## 命令路由
 

@@ -336,6 +336,16 @@ fn build_window(
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
+                // There is no tray icon to restore a hidden pet, so closing the
+                // main window must quit instead of leaving an unreachable
+                // process holding the single-instance lock.
+                if label == "main" {
+                    app.state::<WindowState>()
+                        .stop
+                        .store(true, Ordering::Release);
+                    app.exit(0);
+                    return;
+                }
                 if let Ok(mut windows) = app.state::<WindowState>().auxiliary.write() {
                     windows.remove(&label);
                 }
