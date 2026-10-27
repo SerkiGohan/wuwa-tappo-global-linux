@@ -1,0 +1,29 @@
+# Downloaded or generated from the official Windows installer.
+/frontend/
+/build/
+/src-tauri/icons/
+/src-tauri/gen/
+/src-tauri/.cargo/
+
+# Build output and release artifacts.
+/src-tauri/target/
+/bin/
+/dist/
+*.deb
+*.tar.gz
+*.zip
+
+# Local tooling and logs.
+/node_modules/
+/.work/
+/.npm-cache/
+/.cargo-check.log
+/.work-*.log
+/.work-build.log
+/.workflow/
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+.DS_Store
