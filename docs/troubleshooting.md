@@ -113,11 +113,21 @@ wss://api-mc-wuwatappo.kurogames-global.com/socket.io/
 
 ## 启动时提示已在运行
 
+先确认是不是只关闭了主窗口。主窗口的关闭按钮只会隐藏桌宠，进程仍在后台运行；要真正退出，请使用设置里的“退出应用”，或：
+
 ```bash
+pkill -x wuwatappo-linux
+```
+
+如果进程确实已经不存在，仍提示占用，再清理锁：
+
+```bash
+pgrep -ax wuwatappo-linux
+fuser -v "${XDG_RUNTIME_DIR:-/tmp}/wuwa-tappo-linux.lock"
 rm -f "${XDG_RUNTIME_DIR:-/tmp}/wuwa-tappo-linux.lock"
 ```
 
-确认没有残留进程：`pgrep -af wuwatappo-linux`。
+不要在实例仍在运行时删除锁文件，否则可能启动第二个实例。当前启动器由 `run.sh` 持有锁，应用的 WebKit 子进程不会继承锁 fd；正常退出或异常退出后锁都会释放。
 
 ## 预编译包报 `GLIBC_2.39 not found`
 

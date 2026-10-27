@@ -32,10 +32,28 @@ cd "$DIR"
 if ! id -nG | tr ' ' '\n' | grep -qx input \
   && command -v newgrp >/dev/null 2>&1 \
   && getent group input >/dev/null 2>&1; then
-  if newgrp input -c "cd \"$DIR\" && GDK_BACKEND=x11 WEBKIT_FORCE_COMPOSITING_MODE=1 exec \"$BIN\""; then
+  STARTED="${LOCK}.started"
+  rm -f "$STARTED"
+  if newgrp input -c "cd \"$DIR\" && : > \"$STARTED\" && GDK_BACKEND=x11 WEBKIT_FORCE_COMPOSITING_MODE=1 exec \"$BIN\" 9>&-"; then
+    rm -f "$STARTED"
     exit 0
+  else
+    status=$?
+    # A marker means newgrp reached the app; a non-zero status is the app's
+    # own exit status. Do not start a second instance without input in that
+    # case, or the lock stays held after a crash or forced quit.
+    if [[ -f "$STARTED" ]]; then
+      rm -f "$STARTED"
+      exit "$status"
+    fi
   fi
+  rm -f "$STARTED"
   echo "wuwa-tappo: 无法通过 newgrp 应用 input 组，将以当前权限启动。" >&2
   echo "如果键鼠计数不可用，请重新登录，或在终端执行 'newgrp input' 后再运行。" >&2
 fi
-exec "$BIN"
+
+# Keep this shell alive as the lock owner and close the lock fd in the app.
+# Exec'ing the binary leaks fd 9 into WebKit's child processes, which can keep
+# the flock held after the app exits and make the next launch report "already
+# running".
+"$BIN" 9>&-
