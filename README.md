@@ -49,7 +49,7 @@ If rustup is freshly installed, run `rustup default stable` once.
 2. **Clone and build:**
 
    ```bash
-   git clone <your-fork-url> wuwa-tappo-global-linux
+   git clone https://github.com/SerkiGohan/wuwa-tappo-global-linux.git wuwa-tappo-global-linux
    cd wuwa-tappo-global-linux
    ./build.sh ~/Downloads/WuwaTappo-global_<version>_x64-setup.exe
    ```
