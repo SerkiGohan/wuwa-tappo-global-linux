@@ -1,5 +1,7 @@
 # Wuwa Tappo Global · Linux
 
+This fork was developed with substantial help from an AI assistant (Claude), which wrote most of the code changes. All changes were tested on real hardware before release.
+
 An unofficial community port of **Wuwa Tappo**, the official *Wuthering Waves* desktop pet, to Linux — for the **Global** server (EU, America, Asia, SEA, HMT accounts).
 
 This is a fork of [observer130/wuwa-tappo-linux](https://github.com/observer130/wuwa-tappo-linux), which ports the CN client. The official frontend runs unchanged inside a native Rust + Tauri 2 + WebKitGTK backend — no Wine, no VM.
