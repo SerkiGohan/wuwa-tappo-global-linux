@@ -230,14 +230,31 @@ fn apply_main_input_shape(app: &AppHandle) -> Result<(), String> {
             )
         }
     };
-    let mut shape = state.shape.lock().map_err(err)?;
-    if shape.is_none() {
-        *shape = Some(crate::shape::InputShape::for_window(&main_window(app)?)?);
-    }
-    let result = shape
-        .as_ref()
-        .ok_or("Input shape is unavailable")?
-        .apply(&rectangles);
+    let result = if crate::layer::is_active() {
+        // Wayland-Overlay: Eingabeflaeche in CSS-Pixeln statt XShape.
+        let css: Vec<(i32, i32, i32, i32)> = rectangles
+            .iter()
+            .map(|r| {
+                (
+                    (r.x as f64 / dpr).round() as i32,
+                    (r.y as f64 / dpr).round() as i32,
+                    (r.width as f64 / dpr).round().max(1.) as i32,
+                    (r.height as f64 / dpr).round().max(1.) as i32,
+                )
+            })
+            .collect();
+        crate::layer::apply_input(mode == 2, &css);
+        Ok(())
+    } else {
+        let mut shape = state.shape.lock().map_err(err)?;
+        if shape.is_none() {
+            *shape = Some(crate::shape::InputShape::for_window(&main_window(app)?)?);
+        }
+        shape
+            .as_ref()
+            .ok_or("Input shape is unavailable")?
+            .apply(&rectangles)
+    };
     match &result {
         Ok(()) => {
             let signature = (mode, rectangles.len());
@@ -281,7 +298,7 @@ fn build_window(
         WebviewUrl::App(format!("index.html#{route}").into()),
     )
     .title(if label == "main" {
-        "Wuwa Tappo CN Linux"
+        "Wuwa Tappo Global Linux"
     } else {
         "Wuwa Tappo"
     })
@@ -406,6 +423,13 @@ fn center_on_main(
     window: &WebviewWindow,
     size: Option<(f64, f64)>,
 ) -> Result<(), String> {
+    // Unter Wayland duerfen Apps ihre Fenster nicht selbst positionieren, und
+    // das versteckte Hauptfenster hat dort keinen Monitor. Ohne diesen Ausstieg
+    // schlaegt open_panel_window fehl und das Panel bleibt halb initialisiert.
+    // Hyprland platziert schwebende Fenster ohnehin selbst (mittig).
+    if crate::layer::is_active() {
+        return Ok(());
+    }
     let main = main_window(app)?;
     let monitor = main
         .current_monitor()
@@ -429,6 +453,10 @@ fn center_on_main(
 }
 
 fn fullscreen_shell(app: &AppHandle) -> Result<(), String> {
+    // Das Layer-Shell-Overlay ist per Anker immer monitorgross.
+    if crate::layer::is_active() {
+        return Ok(());
+    }
     let w = main_window(app)?;
     let monitor = w
         .current_monitor()
@@ -442,10 +470,18 @@ fn fullscreen_shell(app: &AppHandle) -> Result<(), String> {
 
 fn safe_area(app: &AppHandle) -> Result<Value, String> {
     let w = main_window(app)?;
-    let m = w
-        .current_monitor()
-        .map_err(err)?
-        .ok_or("No current display")?;
+    let Some(m) = w.current_monitor().map_err(err)? else {
+        // Wayland-Overlay: Das versteckte Hauptfenster hat keinen Monitor. Die
+        // Layer-Flaeche respektiert Panels wie Waybar selbst, also keine Insets.
+        if crate::layer::is_active() {
+            return Ok(json!({
+                "insets": {"left": 0, "top": 0, "right": 0, "bottom": 0},
+                "autoHideEdge": null,
+                "foregroundFullscreen": false
+            }));
+        }
+        return Err("No current display".into());
+    };
     let p = m.position();
     let s = m.size();
     let a = m.work_area();
@@ -903,9 +939,23 @@ pub fn dispatch(
 
 pub fn setup(app: &AppHandle) -> Result<(), String> {
     let w = build_window(app, "main", "/", (900., 650.), false)?;
-    fullscreen_shell(app)?;
-    refresh_geometry(app, "main")?;
-    w.show().map_err(err)?;
+    // Unter nativem Wayland: Pet als Layer-Shell-Overlay statt XWayland-Fenster.
+    let layered = crate::layer::is_wayland()
+        && match crate::layer::convert(&w) {
+            Ok(()) => true,
+            Err(error) => {
+                eprintln!("Layer-Shell-Overlay nicht verfuegbar: {error}");
+                false
+            }
+        };
+    if layered {
+        let _ = crate::system::write_message(app, "info", "[LAYER] Wayland-Overlay aktiv");
+        let _ = refresh_geometry(app, "main");
+    } else {
+        fullscreen_shell(app)?;
+        refresh_geometry(app, "main")?;
+        w.show().map_err(err)?;
+    }
     std::thread::sleep(std::time::Duration::from_millis(50));
     if let Err(error) = apply_main_input_shape(app) {
         eprintln!("Initial input shape failed: {error}");

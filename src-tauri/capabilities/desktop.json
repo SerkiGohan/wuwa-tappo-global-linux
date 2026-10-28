@@ -32,6 +32,7 @@
     "autostart:default",
     "dialog:default",
     "process:allow-restart",
-    "opener:default"
+    "opener:default",
+    "deep-link:default"
   ]
 }

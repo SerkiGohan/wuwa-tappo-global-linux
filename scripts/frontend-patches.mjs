@@ -3,8 +3,8 @@
 // new official release cannot silently produce a half-patched build.
 
 export function patchDomesticSdkUrls(source) {
-  if (!source.includes('const APP_REGION="CN"')) {
-    throw new Error('Expected the official CN frontend. Extract the CN installer before building.');
+  if (!source.includes('const APP_REGION="GLOBAL"')) {
+    throw new Error('Expected the official Global frontend. Extract the Global installer before building.');
   }
   let changes = 0;
   const patched = source.replace(
@@ -15,7 +15,7 @@ export function patchDomesticSdkUrls(source) {
     },
   );
   if (changes !== 2) {
-    throw new Error(`Expected 2 CN SDK URLs, found ${changes}. Reconcile the app version before building.`);
+    throw new Error(`Expected 2 SDK URLs, found ${changes}. Reconcile the app version before building.`);
   }
   return patched;
 }

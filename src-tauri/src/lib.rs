@@ -1,5 +1,6 @@
 mod geometry;
 mod input;
+mod layer;
 mod menu;
 mod pointer;
 mod shape;
@@ -80,6 +81,16 @@ fn handle(invoke: Invoke) -> bool {
 
 pub fn run() {
     let app = tauri::Builder::default()
+        // Muss als erstes Plugin registriert werden: Eine zweite Instanz (z.B.
+        // gestartet vom Browser mit einem wuwa-buddy://-Link) reicht ihre
+        // Argumente an die laufende App weiter und beendet sich. Mit dem
+        // Feature "deep-link" loest das automatisch "deep-link://new-url" aus.
+        .plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
+            eprintln!("Second instance forwarded {} argument(s)", argv.len());
+        }))
+        // Stellt plugin:deep-link|get_current und das Event deep-link://new-url
+        // bereit, auf die der Global-Login (bindOverseasAuthDeepLink) wartet.
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())

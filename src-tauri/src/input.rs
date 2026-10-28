@@ -394,20 +394,26 @@ fn mouse_sample(
     let window = app.get_webview_window("main")?;
     let tauri_scale = window.scale_factor().ok()?.max(f64::EPSILON);
     let dpr = crate::windows::webview_scale(app);
-    let (cursor_x, cursor_y) = pointer
-        .and_then(crate::pointer::PointerReader::position)
-        .or_else(|| {
-            window
-                .cursor_position()
-                .ok()
-                .map(|position| (position.x, position.y))
-        })?;
     let origin = window.inner_position().ok()?;
-    // The official frontend converts the payload with Tauri's scale factor and
-    // inner position. Convert physical -> CSS with WebKit's real DPR, then back
-    // to the payload coordinate space the frontend expects.
-    let (css_x, css_y) =
-        crate::geometry::physical_to_css(cursor_x, cursor_y, origin.x as f64, origin.y as f64, dpr);
+    let (css_x, css_y) = if let Some(layer_cursor) = crate::layer::cursor() {
+        // Wayland-Overlay: Position kommt direkt in CSS-Pixeln aus GTK. Ist der
+        // Zeiger nicht ueber dem Pet, melden wir eine Position weit ausserhalb,
+        // damit Klicks gezaehlt werden, aber nichts am Pet ausloesen.
+        layer_cursor.unwrap_or((-100_000.0, -100_000.0))
+    } else {
+        let (cursor_x, cursor_y) = pointer
+            .and_then(crate::pointer::PointerReader::position)
+            .or_else(|| {
+                window
+                    .cursor_position()
+                    .ok()
+                    .map(|position| (position.x, position.y))
+            })?;
+        // The official frontend converts the payload with Tauri's scale factor and
+        // inner position. Convert physical -> CSS with WebKit's real DPR, then back
+        // to the payload coordinate space the frontend expects.
+        crate::geometry::physical_to_css(cursor_x, cursor_y, origin.x as f64, origin.y as f64, dpr)
+    };
     let (x, y) = crate::geometry::css_to_payload(
         css_x,
         css_y,
