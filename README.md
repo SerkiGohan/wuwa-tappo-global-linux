@@ -14,7 +14,7 @@ What this fork adds on top of the CN port:
 
 ## Features
 
-Everything the official client does: the pet overlay, chests and rewards, inventory, gallery, synthesis, multiplayer rooms, settings, global key and click counting, autostart. Supported hotkeys: `F7` game mode, `F9` show/hide the pet.
+Everything the official client does: the pet overlay, chests and rewards, inventory, gallery, synthesis, multiplayer rooms, settings, global key and click counting, autostart. Supported hotkeys: `F7` game mode (the pet ignores clicks so it does not get in the way; press `F7` again to leave it), `F8` switch monitor, `F9` show/hide the pet.
 
 ## Requirements
 
@@ -86,7 +86,7 @@ Open the settings via the ☰ button next to the pet and choose to log in. Your 
 | Wayland without layer shell (GNOME) | X11 via XWayland |
 | X11 | X11 |
 
-Override it with `GDK_BACKEND`, for example `GDK_BACKEND=x11 ./run.sh`.
+Override it with `./run.sh --x11` or `./run.sh --wayland` (or set `GDK_BACKEND` yourself).
 
 **Hyprland and X11 mode:** Hyprland currently ignores the input region of floating windows ([hyprwm/Hyprland#16300](https://github.com/hyprwm/Hyprland/issues/16300)). In X11 mode, the full-screen overlay therefore swallows clicks meant for native Wayland windows. Use the default Wayland mode on Hyprland.
 
@@ -124,7 +124,6 @@ When Kuro releases a new version, download the new installer and run `./build.sh
 
 ## Known limitations
 
-- **Monitor switching (`F8`)** does not work in Wayland overlay mode yet. The pet stays on the monitor where it started, usually the focused one.
 - No tray icon, as in the CN port.
 - Tested mainly on Hyprland. Other compositors with layer shell should work but are less tested.
 

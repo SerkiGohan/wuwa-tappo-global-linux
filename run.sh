@@ -2,8 +2,17 @@
 # Launch Wuwa Tappo. The binary picks the display backend itself (native
 # Wayland layer-shell overlay where supported, X11/XWayland otherwise) and sets
 # the transparent-overlay defaults; this script adds the input group and a
-# single-instance lock. Force a backend with e.g. GDK_BACKEND=x11 ./run.sh
+# single-instance lock. Force a backend with ./run.sh --x11 or --wayland.
 set -euo pipefail
+
+# Options: --x11 forces X11/XWayland (debugging), --wayland forces the overlay.
+case "${1:-}" in
+  --x11) export GDK_BACKEND=x11 ;;
+  --wayland) export GDK_BACKEND=wayland ;;
+  "") ;;
+  -h|--help) echo "Usage: ./run.sh [--x11|--wayland]"; exit 0 ;;
+  *) echo "Unknown option: $1 (use --x11 or --wayland)" >&2; exit 1 ;;
+esac
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$DIR/bin/wuwatappo-linux"
