@@ -784,24 +784,33 @@ pub fn dispatch(
                 return Err("Monitor dimensions must be positive".into());
             }
             let w = main_window(app)?;
-            state.hit.write().map_err(err)?.force_ignore = true;
-            apply_main_input_shape(app)?;
-            let target = w
-                .available_monitors()
-                .map_err(err)?
-                .into_iter()
-                .find(|m| {
-                    m.position().x == x as i32
-                        && m.position().y == y as i32
-                        && m.size().width == width as u32
-                        && m.size().height == height as u32
-                })
-                .ok_or("Selected display is no longer available")?;
-            let scale = target.scale_factor();
-            w.set_position(LogicalPosition::new(x / scale, y / scale))
-                .map_err(err)?;
-            w.set_size(LogicalSize::new(width / scale, height / scale))
-                .map_err(err)?;
+            if crate::layer::is_active() {
+                // Wayland-Overlay: Das Frontend kennt den aktuellen Monitor hier
+                // nicht zuverlaessig, also wechselt layer.rs selbst zum naechsten.
+                // Den Eingabe-Stopp fuer die Dauer des Verschiebens (force_ignore)
+                // brauchen wir nicht: Der Wechsel passiert in einem Schritt, und
+                // bliebe er haengen, waere das Pet danach nicht mehr klickbar.
+                crate::layer::move_to_next_monitor();
+            } else {
+                state.hit.write().map_err(err)?.force_ignore = true;
+                apply_main_input_shape(app)?;
+                let target = w
+                    .available_monitors()
+                    .map_err(err)?
+                    .into_iter()
+                    .find(|m| {
+                        m.position().x == x as i32
+                            && m.position().y == y as i32
+                            && m.size().width == width as u32
+                            && m.size().height == height as u32
+                    })
+                    .ok_or("Selected display is no longer available")?;
+                let scale = target.scale_factor();
+                w.set_position(LogicalPosition::new(x / scale, y / scale))
+                    .map_err(err)?;
+                w.set_size(LogicalSize::new(width / scale, height / scale))
+                    .map_err(err)?;
+            }
         }
         "finish_main_window_monitor_switch" => {
             state.hit.write().map_err(err)?.force_ignore = false;

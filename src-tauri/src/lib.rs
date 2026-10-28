@@ -79,6 +79,12 @@ fn handle(invoke: Invoke) -> bool {
     handler(invoke)
 }
 
+/// Fuer `--probe-layer-shell` in main.rs: Kann der laufende Wayland-Compositor
+/// wlr-layer-shell? Nur in einem eigenen Prozess aufrufen (initialisiert GTK).
+pub fn layer_shell_supported() -> bool {
+    gtk::init().is_ok() && gtk_layer_shell::is_supported()
+}
+
 pub fn run() {
     let app = tauri::Builder::default()
         // Muss als erstes Plugin registriert werden: Eine zweite Instanz (z.B.

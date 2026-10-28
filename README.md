@@ -1,101 +1,144 @@
-# Wuwa Tappo CN · Linux 社区移植版
+# Wuwa Tappo Global · Linux
 
-[![License: MIT](https://img.shields.io/badge/code-MIT-blue.svg)](LICENSE)
-[![Official UI](https://img.shields.io/badge/official%20UI-1.0.1-c8a2ff.svg)](upstream-cn.json)
+An unofficial community port of **Wuwa Tappo**, the official *Wuthering Waves* desktop pet, to Linux — for the **Global** server (EU, America, Asia, SEA, HMT accounts).
 
-把《鸣潮》官方桌宠 **Wuwa Tappo 国服** 的完整官方桌面端移植到 Linux。界面、角色、字体与在线协议保持官方原样，原生后端使用 **Rust + Tauri 2 + WebKitGTK** 重建，不需要 Wine 或虚拟机。
+This is a fork of [observer130/wuwa-tappo-linux](https://github.com/observer130/wuwa-tappo-linux), which ports the CN client. The official frontend runs unchanged inside a native Rust + Tauri 2 + WebKitGTK backend — no Wine, no VM.
 
-> 这是社区非官方移植，不是库洛官方 Linux 客户端。登录、抽卡、联机等在线功能仍连接 Kuro 官方服务，请使用自己的国服账号。官方美术与素材版权归 **KURO GAMES / Irox Games**，不适用本仓库的 MIT 许可，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+What this fork adds on top of the CN port:
 
-## 功能
+- **Global server support:** Global API and WebSocket endpoints, and the Global browser login (`wuwa-buddy://` link handler).
+- **Native Wayland overlay:** On compositors with `wlr-layer-shell` (Hyprland, Sway, KDE Plasma, …) the pet runs as a layer-shell surface with a real input region. Clicks next to the pet go to the windows below it, as they should.
+- **One-command build** from the official installer, English scripts and messages.
 
-- **官方桌宠主界面**：透明、无边框、全屏覆盖层，保留官方角色、宝箱、点击计数、设置入口与多语言文案。
-- **官方多窗口**：背包、图鉴、合成、联机、设置，登录窗口，关于、OSS 声明、更新/维护提示，以及 Toast。
-- **全局键盘与鼠标**：基于 `evdev` 读取 `/dev/input/event*`，统计打字与点击；支持官方快捷键、点击穿透和按角色区域命中（联机时区分不同桌宠）。
-- **原生 WebSocket 代理**：联机房间走 Rust `tokio-tungstenite`，绕开 WebKitGTK 对跨域 WebSocket 的限制，同时只允许官方国服端点。
-- **多显示器与窗口几何**：工作区安全区域、任务栏 insets、显示器切换、窗口折叠、鼠标穿透命中测试。
-- **本地数据**：点击计数原子写入；日志做脱敏和滚动；不内置任何账号、Cookie 或遥测上传。
-- **开机自启**：复用官方设置页的“开机启动”开关（`tauri-plugin-autostart`）。
+> **Disclaimer:** This is an unofficial fan project. It is not affiliated with, endorsed or supported by KURO GAMES. All official art, characters, fonts and the frontend are © KURO GAMES / Irox Games. **They are not part of this repository**: you extract them locally from your own copy of the official Windows installer. Login and online features talk to the official Kuro servers with your own account. A future official update can break this port at any time. Use at your own risk.
 
-## 系统要求
+## Features
 
-- **x86_64 Linux**，X11 或 XWayland。
-- **WebKitGTK 4.1**、GTK 3、`libsoup-3.0`。
-- 预编译发布包在 Ubuntu 24.04 环境构建，要求 **glibc ≥ 2.39**（Ubuntu 24.04+、Fedora 40+、Arch 等）。更旧的发行版请从源码构建。
-- 读取全局键盘/鼠标需要当前用户属于 **`input` 组**。
+Everything the official client does: the pet overlay, chests and rewards, inventory, gallery, synthesis, multiplayer rooms, settings, global key and click counting, autostart. Supported hotkeys: `F7` game mode, `F9` show/hide the pet.
 
-各发行版安装运行依赖：
+## Requirements
+
+- x86_64 Linux
+- **Recommended:** a Wayland compositor with `wlr-layer-shell` support, such as Hyprland, Sway or KDE Plasma. The pet then runs as a native overlay.
+- Everywhere else (X11 sessions, GNOME), the app falls back to X11/XWayland automatically.
+- Your user must be in the `input` group for global key and click counting. `install.sh` sets this up (see [Privacy](#privacy-and-permissions)).
+
+Tested on CachyOS with Hyprland. Reports from other setups are very welcome.
+
+### Build dependencies
+
+Rust is installed through **rustup**; `rust-toolchain.toml` pins the version and rustup fetches it automatically.
 
 ```bash
-# Arch Linux
-sudo pacman -S webkit2gtk-4.1 gtk3 libappindicator-gtk3
-
-# Ubuntu 24.04 / Debian 13
-sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1
+# Arch / CachyOS / Manjaro
+sudo pacman -S --needed base-devel rustup nodejs npm 7zip webkit2gtk-4.1 gtk3 gtk-layer-shell libappindicator-gtk3
 
 # Fedora
-sudo dnf install webkit2gtk4.1 gtk3 libappindicator-gtk3
+sudo dnf install gcc make rustup nodejs npm 7zip webkit2gtk4.1-devel gtk3-devel gtk-layer-shell-devel libappindicator-gtk3-devel
+
+# Ubuntu 24.04+ / Debian 13
+sudo apt install build-essential rustup nodejs npm 7zip libwebkit2gtk-4.1-dev libgtk-3-dev libgtk-layer-shell-dev libayatana-appindicator3-dev
 ```
 
-## 快速开始
+If rustup is freshly installed, run `rustup default stable` once.
 
-### 使用发布包
+## Installation
 
-从 [Releases](https://github.com/observer130/wuwa-tappo-linux/releases) 下载 `wuwa-tappo-linux-<version>-x86_64.tar.gz`，校验后解压：
+1. **Download the official Windows installer** (`WuwaTappo-global_<version>_x64-setup.exe`) from the [official Wuwa Tappo download page](https://download-wutheringwaves-wuwatappo.kurogames-global.com/download/en/). The installer is never executed: the build only reads the frontend files out of it.
+
+2. **Clone and build:**
+
+   ```bash
+   git clone <your-fork-url> wuwa-tappo-global-linux
+   cd wuwa-tappo-global-linux
+   ./build.sh ~/Downloads/WuwaTappo-global_<version>_x64-setup.exe
+   ```
+
+   `build.sh` checks your dependencies, extracts the frontend, applies the Linux patches and builds `bin/wuwatappo-linux`. The first build takes a few minutes.
+
+3. **Install** (once):
+
+   ```bash
+   ./install.sh
+   ```
+
+   This adds you to the `input` group, creates an app menu entry "Wuwa Tappo Global" and registers the `wuwa-buddy://` login link handler.
+
+4. **Start:**
+
+   ```bash
+   ./run.sh
+   ```
+
+   Or launch "Wuwa Tappo Global" from your app menu. To start it with your session, add `run.sh` to your autostart. On Hyprland, for example, use an `exec-once` entry.
+
+## Logging in
+
+Open the settings via the ☰ button next to the pet and choose to log in. Your browser opens the official Kuro login page. After logging in, the browser asks whether to open the `wuwa-buddy` link: allow it, and the app is logged in.
+
+## Display backend
+
+`run.sh` and the binary pick the backend automatically:
+
+| Session | Mode |
+|---|---|
+| Wayland with `wlr-layer-shell` (Hyprland, Sway, KDE, …) | Native layer-shell overlay |
+| Wayland without layer shell (GNOME) | X11 via XWayland |
+| X11 | X11 |
+
+Override it with `GDK_BACKEND`, for example `GDK_BACKEND=x11 ./run.sh`.
+
+**Hyprland and X11 mode:** Hyprland currently ignores the input region of floating windows ([hyprwm/Hyprland#16300](https://github.com/hyprwm/Hyprland/issues/16300)). In X11 mode, the full-screen overlay therefore swallows clicks meant for native Wayland windows. Use the default Wayland mode on Hyprland.
+
+The overlay uses the layer namespace `wuwa-tappo` if you want compositor layer rules for it.
+
+## Quitting
+
+Use the quit option in the app's settings, or run:
 
 ```bash
-sha256sum -c wuwa-tappo-linux-0.1.0-x86_64.tar.gz.sha256  # 可选
-tar -xzf wuwa-tappo-linux-0.1.0-x86_64.tar.gz
-cd wuwa-tappo-linux-0.1.0-x86_64
-./install.sh   # 加入 input 组、注册桌面菜单项
-./run.sh       # 启动
+pkill -f wuwatappo-linux
 ```
 
-之后也可以在应用菜单搜索 **Wuwa Tappo CN Linux**。
+## Updating
 
-> **推荐通过 `run.sh` 启动。** 它会应用 `input` 组、单实例锁，并设置 `GDK_BACKEND=x11` 与 `WEBKIT_FORCE_COMPOSITING_MODE=1`。二进制本身也会在未显式指定时补齐这两个变量，但 `run.sh` 仍是经过验证的启动方式。
+When Kuro releases a new version, download the new installer and run `./build.sh` with it again. The Linux patches look for exact places in the official frontend and **stop the build with an error** if those changed, instead of producing a half-working app. If that happens, please open an issue.
 
-### 从源码构建
+## Privacy and permissions
 
-需要 Node.js 20+、Rust 1.97.1、7-Zip，以及 WebKitGTK 4.1 开发包。官方前端需要从 Windows 安装包中静态提取，后再嵌入二进制：
+- **`input` group:** Global key and click counting reads `/dev/input/event*` directly. Members of the `input` group can read **all** keyboard and mouse input, so any program running as your user could, too. If you do not want that, skip `install.sh`'s group step; the app still works, only the counting stops.
+- **App data** lives in `~/.local/share/dev.wuwatappo.global.linux/`:
+  - `counters.json` holds your key and click counts.
+  - `logs/app.log` is a rotating log; tokens, cookies and URL parameters are redacted.
+  - The login session is stored there as well.
+
+  Delete the folder to reset everything, including your login.
+- This port contains **no telemetry of its own** and never uploads your data anywhere except to the official Kuro services the original client talks to.
+
+## Troubleshooting
+
+- **The browser login does not return to the app:** Run `./install-url-handler.sh` again and check `xdg-mime query default x-scheme-handler/wuwa-buddy`. It should print `wuwa-tappo-global-url.desktop`.
+- **Clicks next to the pet do not reach other windows:** Check whether the overlay mode is active with `grep LAYER ~/.local/share/dev.wuwatappo.global.linux/logs/app.log`.
+- **Key/click counts stay at zero:** Log out and back in after `install.sh`, so the `input` group applies.
+- **Anything else:** Please open an issue with the relevant lines from `logs/app.log`, your distribution and your desktop/compositor.
+
+## Known limitations
+
+- **Monitor switching (`F8`)** does not work in Wayland overlay mode yet. The pet stays on the monitor where it started, usually the focused one.
+- No tray icon, as in the CN port.
+- Tested mainly on Hyprland. Other compositors with layer shell should work but are less tested.
+
+## Uninstall
 
 ```bash
-npm ci
-npm run upstream:update          # 下载并校验官方 1.0.1 安装包，提取 frontend/
-npm run icons
-npm run prepare:frontend
-cargo build --release --manifest-path src-tauri/Cargo.toml
-mkdir -p bin && cp src-tauri/target/release/wuwatappo-linux bin/
-npm run package
+./install.sh --uninstall
 ```
 
-完整步骤、手动提取、deb 打包和中国大陆镜像配置见 [docs/building.md](docs/building.md)。
+This removes the menu entry and the link handler. Remove app data with `rm -rf ~/.local/share/dev.wuwatappo.global.linux`.
 
-### 登录
+## Credits and license
 
-1. 打开设置入口，选择“通行证登录”或“游戏 UID 登录”。
-2. 使用自己的国服账号完成登录。登录态由 WebKitGTK 的 Cookie/LocalStorage 保存，不会上传到本仓库。
-3. 未登录时部分面板会停留在加载态，登录后由官方前端恢复。
-
-## 快捷键
-
-以下快捷键由官方前端注册（需窗口获得焦点/输入监听可用）：
-
-| 按键 | 行为 |
-| --- | --- |
-| `F7` | 切换游戏模式（临时禁用与桌宠的交互） |
-| `F8` | 在多显示器之间切换主窗口 |
-| `F9` | 显示 / 隐藏桌宠 |
-
-界面内还可点击右下角宝箱领取奖励、点击设置按钮打开背包 / 图鉴 / 合成 / 联机 / 设置。
-
-当前版本没有托盘图标。关闭主窗口或任务栏关闭会直接退出应用；`F9` 隐藏桌宠后进程仍在，再按一次 `F9` 即可恢复。
-
-## 数据与隐私
-
-- 应用数据：`~/.local/share/dev.w33d.wuwatappo.cn.linux/`
-  - `counters.json`：按键与点击计数（按账号/环境区分）。
-  - `logs/app.log`：脱敏后的运行日志，超过 2 MiB 自动滚动。
-  - WebKit 的 Cookie / LocalStorage 也位于该应用数据目录下。
-- 日志会对 URL 查询参数、token、Cookie、Authorization 等做脱敏；不会主动上传。
-- 重置全部本地状态：先退出应用，再删除上述目录。这会同时清除登录态与点击计数。
+- Linux port and backend: [observer130/wuwa-tappo-linux](https://github.com/observer130/wuwa-tappo-linux).
+- Global support and Wayland layer-shell overlay: this fork.
+- The port's code is licensed under the **MIT License**; see [LICENSE](LICENSE).
+- Official assets, characters and the frontend are © KURO GAMES / Irox Games and **not** covered by this license; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

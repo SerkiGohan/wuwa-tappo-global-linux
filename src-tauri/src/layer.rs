@@ -20,6 +20,10 @@ use std::sync::Mutex;
 
 thread_local! {
     static OVERLAY: RefCell<Option<gtk::ApplicationWindow>> = const { RefCell::new(None) };
+    /// Index des Monitors, auf den wir das Overlay zuletzt gesetzt haben.
+    static MONITOR: std::cell::Cell<Option<i32>> = const { std::cell::Cell::new(None) };
+    /// Zuletzt gesetzte Eingabeflaeche: (ganzes Fenster?, Rechtecke).
+    static INPUT: RefCell<(bool, Vec<(i32, i32, i32, i32)>)> = const { RefCell::new((false, Vec::new())) };
 }
 
 /// Ob das Overlay aktiv ist, lesbar auch vom Eingabe-Thread (input.rs).
@@ -89,6 +93,14 @@ pub fn convert(window: &tauri::WebviewWindow) -> Result<(), String> {
         false
     });
 
+    // Beim Monitorwechsel bildet gtk-layer-shell die Flaeche neu ab, und GDK
+    // erzeugt dafuer eine neue Wayland-Surface, die die alte Eingabeflaeche
+    // nicht uebernimmt. Nach jedem Abbilden setzen wir sie deshalb neu.
+    overlay.connect_map(|window| {
+        let window = window.clone();
+        gtk::glib::idle_add_local_once(move || reapply_input(&window));
+    });
+
     // Bis das Frontend seine Klickbereiche meldet: komplett durchklickbar.
     overlay.input_shape_combine_region(Some(&gtk::cairo::Region::create()));
     overlay.show_all();
@@ -138,12 +150,22 @@ fn pointer_over(overlay: &gtk::ApplicationWindow) -> Option<(f64, f64)> {
 /// sonst nur die uebergebenen Rechtecke (x, y, Breite, Hoehe in CSS-Pixeln).
 /// Gibt `false` zurueck, wenn kein Overlay aktiv ist.
 pub fn apply_input(full: bool, rects: &[(i32, i32, i32, i32)]) -> bool {
+    INPUT.with(|input| *input.borrow_mut() = (full, rects.to_vec()));
     OVERLAY.with(|slot| {
         let slot = slot.borrow();
         let Some(overlay) = slot.as_ref() else {
             return false;
         };
-        if full {
+        reapply_input(overlay);
+        true
+    })
+}
+
+/// Setzt die zuletzt gemeldete Eingabeflaeche (erneut) auf das Overlay.
+fn reapply_input(overlay: &gtk::ApplicationWindow) {
+    INPUT.with(|input| {
+        let (full, rects) = &*input.borrow();
+        if *full {
             overlay.input_shape_combine_region(None);
         } else {
             let region = gtk::cairo::Region::create();
@@ -151,6 +173,52 @@ pub fn apply_input(full: bool, rects: &[(i32, i32, i32, i32)]) -> bool {
                 let _ = region.union_rectangle(&gtk::cairo::RectangleInt::new(x, y, width, height));
             }
             overlay.input_shape_combine_region(Some(&region));
+        }
+    });
+}
+
+/// F8: Verschiebt das Overlay auf den naechsten Monitor (bei zweien also hin
+/// und her). Das Frontend kann den aktuellen Monitor im Overlay-Modus nicht
+/// selbst bestimmen, weil das versteckte Tauri-Fenster keine echte Position
+/// hat. Deshalb merken wir uns hier, wo das Overlay gerade ist, und zaehlen
+/// einfach weiter. Gibt `false` zurueck, wenn kein Overlay aktiv ist.
+pub fn move_to_next_monitor() -> bool {
+    OVERLAY.with(|slot| {
+        let slot = slot.borrow();
+        let Some(overlay) = slot.as_ref() else {
+            return false;
+        };
+        let display = WidgetExt::display(overlay);
+        // Nur echte Bildschirme: Virtuelle Ausgaben (z.B. Headless-Outputs fuer
+        // Streaming) haben kein Modell und liegen oft weit ausserhalb des
+        // sichtbaren Bereichs, dort waere das Pet unsichtbar.
+        let mut candidates: Vec<i32> = (0..display.n_monitors())
+            .filter(|&i| display.monitor(i).and_then(|m| m.model()).is_some())
+            .collect();
+        if candidates.is_empty() {
+            candidates = (0..display.n_monitors()).collect();
+        }
+        if candidates.len() < 2 {
+            return true;
+        }
+        // Beim ersten Wechsel: den Monitor erkennen, den Hyprland beim Start
+        // gewaehlt hat. Danach den gemerkten Index nehmen.
+        let current = MONITOR.with(|monitor| monitor.get()).unwrap_or_else(|| {
+            overlay
+                .window()
+                .and_then(|window| display.monitor_at_window(&window))
+                .and_then(|found| {
+                    (0..display.n_monitors()).find(|&i| display.monitor(i).as_ref() == Some(&found))
+                })
+                .unwrap_or(candidates[0])
+        });
+        let position = candidates.iter().position(|&i| i == current).unwrap_or(0);
+        let next = candidates[(position + 1) % candidates.len()];
+        if let Some(monitor) = display.monitor(next) {
+            // gtk-layer-shell bildet die Flaeche dafuer neu ab; die neue Groesse
+            // kommt ueber die configure-Weiterleitung beim Frontend an.
+            overlay.set_monitor(&monitor);
+            MONITOR.with(|slot| slot.set(Some(next)));
         }
         true
     })

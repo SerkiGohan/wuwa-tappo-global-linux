@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Launch Wuwa Tappo. The binary sets the transparent-overlay environment
-# defaults itself; this script adds the input group, single-instance lock and
-# X11 backend preference used by the tested configuration.
+# Launch Wuwa Tappo. The binary picks the display backend itself (native
+# Wayland layer-shell overlay where supported, X11/XWayland otherwise) and sets
+# the transparent-overlay defaults; this script adds the input group and a
+# single-instance lock. Force a backend with e.g. GDK_BACKEND=x11 ./run.sh
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,11 +11,10 @@ if [[ ! -x "$BIN" ]]; then
   BIN="$DIR/src-tauri/target/release/wuwatappo-linux"
 fi
 if [[ ! -x "$BIN" ]]; then
-  echo "wuwa-tappo: binary not found. Download a release, or build with 'npm run package'." >&2
+  echo "wuwa-tappo: binary not found. Build it first: ./build.sh /path/to/WuwaTappo-global_<version>_x64-setup.exe" >&2
   exit 1
 fi
 
-export GDK_BACKEND=x11
 export WEBKIT_FORCE_COMPOSITING_MODE=1
 
 LOCK="${XDG_RUNTIME_DIR:-/tmp}/wuwa-tappo-linux.lock"
@@ -34,7 +34,7 @@ if ! id -nG | tr ' ' '\n' | grep -qx input \
   && getent group input >/dev/null 2>&1; then
   STARTED="${LOCK}.started"
   rm -f "$STARTED"
-  if newgrp input -c "cd \"$DIR\" && : > \"$STARTED\" && GDK_BACKEND=x11 WEBKIT_FORCE_COMPOSITING_MODE=1 exec \"$BIN\" 9>&-"; then
+  if newgrp input -c "cd \"$DIR\" && : > \"$STARTED\" && WEBKIT_FORCE_COMPOSITING_MODE=1 exec \"$BIN\" 9>&-"; then
     rm -f "$STARTED"
     exit 0
   else
@@ -48,8 +48,8 @@ if ! id -nG | tr ' ' '\n' | grep -qx input \
     fi
   fi
   rm -f "$STARTED"
-  echo "wuwa-tappo: 无法通过 newgrp 应用 input 组，将以当前权限启动。" >&2
-  echo "如果键鼠计数不可用，请重新登录，或在终端执行 'newgrp input' 后再运行。" >&2
+  echo "wuwa-tappo: could not apply the input group via newgrp; starting without it." >&2
+  echo "If key/click counting does not work, log out and back in, or run 'newgrp input' first." >&2
 fi
 
 # Keep this shell alive as the lock owner and close the lock fd in the app.
