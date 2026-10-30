@@ -233,6 +233,43 @@ struct PollFd {
 
 const EV_KEY: u16 = 1;
 const EV_SYN: u16 = 0;
+const EV_ABS: u16 = 3;
+
+/// Gamepad-Tasten, die der Windows-Client mitzaehlt (die digitalen XInput-
+/// Tasten). Analoge Eingaben (Sticks, Trigger) zaehlen dort nicht, deshalb
+/// fehlen hier auch BTN_TL2/BTN_TR2 (0x138/0x139): Manche Controller melden
+/// ihre analogen Trigger zusaetzlich als Taste.
+fn is_gamepad_button(code: u16) -> bool {
+    matches!(code,
+        0x120..=0x12f            // BTN_TRIGGER..BTN_DEAD: einfache Joysticks/Gamepads
+        | 0x130..=0x137          // BTN_SOUTH..BTN_TR: A/B/X/Y, Schultertasten
+        | 0x13a..=0x13e          // BTN_SELECT, BTN_START, BTN_MODE, Stick-Klicks
+        | 0x220..=0x223          // BTN_DPAD_*: Steuerkreuz als Tasten
+        | 0x2c0..=0x2e7          // BTN_TRIGGER_HAPPY*: Zusatztasten, Steuerkreuz
+    )
+}
+
+/// ABS_HAT0X..ABS_HAT3Y: Die meisten Controller melden das Steuerkreuz nicht
+/// als Tasten, sondern als Achse mit den Werten -1, 0 und 1.
+fn is_hat_axis(code: u16) -> bool {
+    (0x10..=0x17).contains(&code)
+}
+
+/// Meldet einen Controller-Tastendruck ans Frontend (zaehlt dort als Klick).
+/// Steam Input spiegelt Controller als virtuelles Xbox-Pad: Derselbe Druck
+/// kommt dann von zwei Geraeten kurz hintereinander. Gleiche Tasten innerhalb
+/// von 40 ms zaehlen deshalb nur einmal.
+fn gamepad_press(app: &AppHandle, recent: &mut BTreeMap<u32, Instant>, id: u32) {
+    let now = Instant::now();
+    if recent
+        .get(&id)
+        .is_some_and(|last| now.duration_since(*last) < Duration::from_millis(40))
+    {
+        return;
+    }
+    recent.insert(id, now);
+    let _ = app.emit("gamepad-button-press", ());
+}
 
 struct Device {
     _path: PathBuf,
@@ -468,6 +505,8 @@ fn run_monitor(
 
     let mut pressed_keys = BTreeSet::new();
     let mut pressed_buttons: BTreeMap<&'static str, bool> = BTreeMap::new();
+    let mut hat_state: BTreeMap<(PathBuf, u16), i32> = BTreeMap::new();
+    let mut recent_gamepad: BTreeMap<u32, Instant> = BTreeMap::new();
     let mut last_scan = Instant::now();
     let mut last_position: Option<(f64, f64)> = None;
     let mut last_move_emit = Instant::now() - Duration::from_millis(100);
@@ -522,7 +561,25 @@ fn run_monitor(
                     if event.type_ == EV_SYN {
                         continue;
                     }
+                    if event.type_ == EV_ABS && is_hat_axis(event.code) {
+                        // Steuerkreuz: Ein Druck ist der Wechsel von 0 auf -1/1.
+                        let key = (devices[index]._path.clone(), event.code);
+                        let previous = hat_state.insert(key, event.value).unwrap_or(0);
+                        if previous == 0 && event.value != 0 {
+                            let direction = if event.value < 0 { 0 } else { 1 };
+                            let id = 0x1_0000 + u32::from(event.code) * 2 + direction;
+                            gamepad_press(&app, &mut recent_gamepad, id);
+                        }
+                        continue;
+                    }
                     if event.type_ != EV_KEY {
+                        continue;
+                    }
+                    if is_gamepad_button(event.code) {
+                        // Nur das Druecken zaehlt, nicht Loslassen oder Wiederholung.
+                        if event.value == 1 {
+                            gamepad_press(&app, &mut recent_gamepad, u32::from(event.code));
+                        }
                         continue;
                     }
                     if (272..=274).contains(&event.code) {
@@ -583,6 +640,7 @@ fn run_monitor(
                 if index < devices.len() {
                     let device = devices.remove(index);
                     known.remove(&device._path);
+                    hat_state.retain(|(path, _), _| path != &device._path);
                     // Releases from the removed device will never arrive.
                     pressed_keys.clear();
                     pressed_buttons.clear();
