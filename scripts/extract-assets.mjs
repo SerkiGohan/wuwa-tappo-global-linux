@@ -159,6 +159,43 @@ export function inspectStaticReferences(entries) {
   return { references, missing: references.filter(reference => !reference.exists) };
 }
 
+// Do not rely on a fixed file name for the app executable inside the
+// installer. Kuro's 1.0.3 installer writes it under a name taken from an NSIS
+// variable, which 7-Zip can only list as a placeholder such as "$_21_".
+// Prefer WuwaTappo.exe; otherwise take the largest file that is not an NSIS
+// plugin or the uninstaller: the app binary carries the whole frontend and is
+// by far the biggest entry. findAssetEntries() validates the choice afterwards.
+function findPayloadName(sevenzip, filename) {
+  const listing = spawnSync(sevenzip, ['l', '-slt', '-bd', filename], {
+    encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+  });
+  if (listing.error) throw listing.error;
+  if (listing.status !== 0) throw new Error(`7-Zip listing failed: ${listing.stderr || listing.stdout}`);
+  const entries = [];
+  let current = null;
+  for (const line of listing.stdout.split(/\r?\n/)) {
+    const pathMatch = line.match(/^Path = (.+)$/);
+    if (pathMatch) {
+      current = { path: pathMatch[1], size: 0 };
+      entries.push(current);
+      continue;
+    }
+    const sizeMatch = line.match(/^Size = (\d+)$/);
+    if (sizeMatch && current) current.size = Number(sizeMatch[1]);
+  }
+  const baseName = entry => path.basename(entry.path.replaceAll('\\', '/'));
+  const candidates = entries.filter(entry => path.resolve(entry.path) !== path.resolve(filename)
+    && !entry.path.startsWith('$PLUGINSDIR')
+    && !/uninst/i.test(baseName(entry)));
+  const exact = candidates.find(entry => baseName(entry) === 'WuwaTappo.exe');
+  if (exact) return exact.path;
+  if (!candidates.length) {
+    throw new Error(`No application payload found in the installer. Contents: ${entries.map(entry => entry.path).join(', ')}`);
+  }
+  candidates.sort((a, b) => b.size - a.size);
+  return candidates[0].path;
+}
+
 async function main() {
   const options = {};
   const args = process.argv.slice(2);
@@ -179,12 +216,14 @@ async function main() {
     try {
       const filename = path.join(temporary, 'setup.exe');
       await writeFile(filename, installer.subarray(bounds.start, bounds.end));
-      const result = spawnSync(options.sevenzip, ['e', '-y', '-bd', `-o${temporary}`, filename, 'WuwaTappo.exe'], {
+      const payload = findPayloadName(options.sevenzip, filename);
+      console.error(`Using installer payload: ${payload}`);
+      const result = spawnSync(options.sevenzip, ['e', '-y', '-bd', `-o${temporary}`, filename, payload], {
         encoding: 'utf8', maxBuffer: 1024 * 1024,
       });
       if (result.error) throw result.error;
       if (result.status !== 0) throw new Error(`7-Zip extraction failed: ${result.stderr || result.stdout}`);
-      bytes = await readFile(path.join(temporary, 'WuwaTappo.exe'));
+      bytes = await readFile(path.join(temporary, path.basename(payload.replaceAll('\\', '/'))));
     } finally { await rm(temporary, { recursive: true, force: true }); }
   }
   const entries = findAssetEntries(bytes);
